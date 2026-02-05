@@ -4,6 +4,20 @@ import { promisify } from 'util';
 import https from 'https';
 import { API_KEYS, SERVICE_URLS } from '../constants/config';
 
+// Request queue for Bytez free tier (1 concurrent request limit)
+interface QueuedRequest {
+  options: BytezVideoOptions;
+  resolve: (value: BytezVideoResponse) => void;
+  reject: (reason: any) => void;
+  retries: number;
+}
+
+const requestQueue: QueuedRequest[] = [];
+let isProcessing = false;
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 2000;
+const RATE_LIMIT_DELAY_MS = 5000; // Wait 5s after rate limit
+
 export interface BytezVideoOptions {
   prompt: string;
   model?: string;
@@ -51,33 +65,86 @@ export class BytezVideoService {
     return !!this.apiKey && this.apiKey !== 'your_bytez_api_key_here';
   }
 
-  async generateVideo(options: BytezVideoOptions): Promise<BytezVideoResponse> {
-    if (!this.isAvailable()) {
-      return {
-        requestId: '',
-        status: 'error',
-        error: 'Bytez API key not configured'
-      };
+  getQueueStatus(): { queueLength: number; isProcessing: boolean } {
+    return {
+      queueLength: requestQueue.length,
+      isProcessing
+    };
+  }
+
+  private async processQueue(): Promise<void> {
+    if (isProcessing || requestQueue.length === 0) return;
+    
+    isProcessing = true;
+    const queuedRequest = requestQueue.shift()!;
+    
+    try {
+      const result = await this.executeGenerateVideo(queuedRequest.options);
+      queuedRequest.resolve(result);
+    } catch (error) {
+      queuedRequest.reject(error);
+    } finally {
+      isProcessing = false;
+      // Process next request after a small delay to respect rate limits
+      setTimeout(() => this.processQueue(), 1000);
     }
+  }
+
+  private async executeGenerateVideo(options: BytezVideoOptions): Promise<BytezVideoResponse> {
+    let lastError: Error | null = null;
+    
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        const result = await this.makeApiRequest(options);
+        
+        // If rate limited, wait and retry
+        if (result.error?.includes('429') || result.error?.includes('Rate limited')) {
+          console.log(`⏳ Bytez rate limited, waiting ${RATE_LIMIT_DELAY_MS}ms before retry ${attempt + 1}/${MAX_RETRIES}`);
+          await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY_MS * (attempt + 1)));
+          lastError = new Error(result.error);
+          continue;
+        }
+        
+        return result;
+      } catch (error: any) {
+        lastError = error;
+        console.error(`Bytez attempt ${attempt + 1}/${MAX_RETRIES} failed:`, error.message);
+        
+        if (attempt < MAX_RETRIES - 1) {
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * (attempt + 1)));
+        }
+      }
+    }
+    
+    return {
+      requestId: '',
+      status: 'error',
+      error: lastError?.message || 'All retry attempts failed'
+    };
+  }
+
+  private async makeApiRequest(options: BytezVideoOptions): Promise<BytezVideoResponse> {
+    console.log(`🎬 Generating video with Bytez: "${options.prompt.substring(0, 50)}..."`);
+
+    const model = options.model || BYTEZ_VIDEO_MODELS.DEFAULT;
+    const isZeroScope = model.includes('zeroscope');
+
+    const requestBody: any = isZeroScope
+      ? {
+          text: options.prompt,
+          num_frames: 24,
+          fps: 8,
+        }
+      : {
+          text: options.prompt,
+          width: options.width || 576,
+          height: options.height || 320,
+        };
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
     try {
-      console.log(`🎬 Generating video with Bytez: "${options.prompt.substring(0, 50)}..."`);
-
-      const model = options.model || BYTEZ_VIDEO_MODELS.DEFAULT;
-      const isZeroScope = model.includes('zeroscope');
-
-      const requestBody: any = isZeroScope
-        ? {
-            text: options.prompt,
-            num_frames: 24,
-            fps: 8,
-          }
-        : {
-            text: options.prompt,
-            width: options.width || 576,
-            height: options.height || 320,
-          };
-
       const response = await fetch(`${this.baseUrl}/${model}`, {
         method: 'POST',
         headers: {
@@ -85,15 +152,18 @@ export class BytezVideoService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(requestBody),
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
-        const error = await response.text();
-        console.error(`Bytez video API error: ${response.status} - ${error}`);
+        const errorText = await response.text();
+        console.error(`Bytez video API error: ${response.status} - ${errorText}`);
         return {
           requestId: '',
           status: 'error',
-          error: `API error: ${response.status}`
+          error: `API error ${response.status}: ${errorText}`
         };
       }
 
@@ -134,13 +204,40 @@ export class BytezVideoService {
         status: 'processing',
       };
     } catch (error: any) {
-      console.error('Bytez video generation error:', error);
+      clearTimeout(timeoutId);
+      
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout - Bytez API took too long to respond');
+      }
+      
+      if (error.message?.includes('fetch failed')) {
+        throw new Error(`Network error - Unable to reach Bytez API. Please check your internet connection and that the API (${this.baseUrl}) is accessible.`);
+      }
+      
+      throw error;
+    }
+  }
+
+  async generateVideo(options: BytezVideoOptions): Promise<BytezVideoResponse> {
+    if (!this.isAvailable()) {
       return {
         requestId: '',
         status: 'error',
-        error: error.message
+        error: 'Bytez API key not configured'
       };
     }
+
+    return new Promise((resolve, reject) => {
+      requestQueue.push({
+        options,
+        resolve,
+        reject,
+        retries: 0
+      });
+      
+      // Start processing the queue
+      this.processQueue();
+    });
   }
 
   async checkStatus(requestId: string): Promise<BytezVideoStatusResponse> {
