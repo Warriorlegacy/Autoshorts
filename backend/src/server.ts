@@ -12,7 +12,7 @@ import youtubeRoutes from './routes/youtube';
 import instagramRoutes from './routes/instagram';
 import topicRoutes from './routes/topic';
 import socialRoutes from './routes/social';
-import { testConnection } from './config/db';
+import { testConnection, initDB } from './config/db';
 import { errorHandler, notFoundHandler, ApiError } from './middleware/errorHandler';
 import { responseFormatter } from './middleware/responseFormatter';
 import { generalLimiter, authLimiter, ttsLimiter, imageLimiter } from './middleware/rateLimiter';
@@ -95,6 +95,7 @@ app.use(errorHandler);
 const startServer = async () => {
   try {
     await testConnection();
+    await initDB(); // Initialize database tables
     app.listen(PORT, () => {
       console.log(`✓ Server is running on http://localhost:${PORT}`);
       autoPostScheduler.start();
