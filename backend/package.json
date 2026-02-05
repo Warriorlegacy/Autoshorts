@@ -40,6 +40,7 @@
     "jsonwebtoken": "^9.0.3",
     "node-pg-migrate": "^8.0.4",
     "pg": "^8.17.2",
+    "replicate": "^0.25.1",
     "remotion": "^4.0.411"
   },
   "devDependencies": {
