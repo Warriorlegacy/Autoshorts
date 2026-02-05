@@ -180,12 +180,12 @@ const VideoCreation = () => {
       animate={{ opacity: 1, y: 0 }}
       className="max-w-4xl mx-auto"
     >
-      <h1 className="text-h1 font-heading mb-8">Create New Video</h1>
+      <h1 className="text-3xl font-bold mb-8 text-gray-900">Create New Video</h1>
 
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* Mode Toggle */}
         <motion.div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-          <h2 className="text-h2 font-heading mb-6">Mode Selection</h2>
+          <h2 className="text-xl font-bold mb-6 text-gray-900">Mode Selection</h2>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <button
               type="button"
@@ -197,7 +197,7 @@ const VideoCreation = () => {
               }`}
             >
               <div className="text-lg">🎬 Standard Video</div>
-              <div className="text-sm text-gray-500 mt-1">AI-generated scenes with narration</div>
+              <div className="text-sm text-gray-700 mt-1 font-medium">AI-generated scenes with narration</div>
             </button>
             <button
               type="button"
@@ -209,7 +209,7 @@ const VideoCreation = () => {
               }`}
             >
               <div className="text-lg">📝 Text to Video</div>
-              <div className="text-sm text-gray-500 mt-1">Your script + AI visuals</div>
+              <div className="text-sm text-gray-700 mt-1 font-medium">Your script + AI visuals</div>
             </button>
             <button
               type="button"
@@ -217,7 +217,7 @@ const VideoCreation = () => {
               className="py-4 px-4 rounded-xl border-2 border-purple-200 hover:border-purple-400 transition-all bg-purple-50 hover:bg-purple-100"
             >
               <div className="text-lg">🎭 Avatar Video</div>
-              <div className="text-sm text-gray-500 mt-1">Talking avatar with lip-sync</div>
+              <div className="text-sm text-gray-700 mt-1 font-medium">Talking avatar with lip-sync</div>
             </button>
             <button
               type="button"
@@ -225,7 +225,7 @@ const VideoCreation = () => {
               className="py-4 px-4 rounded-xl border-2 border-green-200 hover:border-green-400 transition-all bg-green-50 hover:bg-green-100"
             >
               <div className="text-lg">🤖 AI Video</div>
-              <div className="text-sm text-gray-500 mt-1">Text-to-video models</div>
+              <div className="text-sm text-gray-700 mt-1 font-medium">Text-to-video models</div>
             </button>
           </div>
 
@@ -234,7 +234,7 @@ const VideoCreation = () => {
             <>
               {/* Prompt Input */}
               <div className="mb-6">
-                <label className="block text-sm font-medium mb-3">Describe Your Video</label>
+                <label className="block text-base font-semibold mb-3 text-gray-900">Describe Your Video</label>
                 <textarea
                   value={formData.prompt}
                   onChange={(e) => setFormData({ ...formData, prompt: e.target.value })}
@@ -264,7 +264,7 @@ const VideoCreation = () => {
 
               {/* Image Upload */}
               <div className="mb-6">
-                <label className="block text-sm font-medium mb-3">Upload Images (Optional)</label>
+                <label className="block text-base font-semibold mb-3 text-gray-900">Upload Images (Optional)</label>
                 <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center">
                   <input
                     type="file"
@@ -289,8 +289,8 @@ const VideoCreation = () => {
                         <svg className="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
                         </svg>
-                        <p className="text-gray-600">Click to upload images</p>
-                        <p className="text-gray-400 text-sm">PNG, JPG, GIF up to 10MB</p>
+                        <p className="text-gray-800 font-medium">Click to upload images</p>
+                        <p className="text-gray-600 text-sm font-medium">PNG, JPG, GIF up to 10MB</p>
                       </>
                     )}
                   </label>
@@ -299,7 +299,7 @@ const VideoCreation = () => {
                 {/* Image Previews */}
                 {previews.length > 0 && (
                   <div className="mt-4">
-                    <h3 className="text-sm font-medium mb-2">Uploaded Images:</h3>
+                    <h3 className="text-base font-semibold mb-2 text-gray-900">Uploaded Images:</h3>
                     <div className="flex flex-wrap gap-2">
                       {previews.map((preview, index) => (
                         <div key={index} className="relative">
@@ -329,7 +329,7 @@ const VideoCreation = () => {
             <>
               {/* Niche Selection */}
               <div className="mb-6">
-                <label className="block text-sm font-medium mb-3">Select Niche</label>
+                <label className="block text-base font-semibold mb-3 text-gray-900">Select Niche</label>
                 <select
                   value={formData.niche}
                   onChange={(e) => setFormData({ ...formData, niche: e.target.value })}
@@ -349,7 +349,7 @@ const VideoCreation = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Language Selection */}
             <div>
-              <label className="block text-sm font-medium mb-3">Voiceover Language</label>
+              <label className="block text-base font-semibold mb-3 text-gray-900">Voiceover Language</label>
               <div className="grid grid-cols-2 gap-2">
                 {languages.map(lang => (
                   <button
@@ -371,7 +371,7 @@ const VideoCreation = () => {
 
             {/* Voice Selection */}
             <div>
-              <label className="block text-sm font-medium mb-3">Voice Actor</label>
+              <label className="block text-base font-semibold mb-3 text-gray-900">Voice Actor</label>
               <div className="grid grid-cols-2 gap-2">
                 {voiceOptions.map(voice => (
                   <button
@@ -394,7 +394,7 @@ const VideoCreation = () => {
 
           {/* Duration Selection */}
           <div className="mt-6">
-            <label className="block text-sm font-medium mb-3">Duration</label>
+            <label className="block text-base font-semibold mb-3 text-gray-900">Duration</label>
             <div className="flex gap-4">
               {[
                 { value: 30, label: '30 Seconds', desc: 'Quick & punchy' },
@@ -411,7 +411,7 @@ const VideoCreation = () => {
                   }`}
                 >
                   <div className="font-medium">{option.label}</div>
-                  <div className="text-sm text-gray-500">{option.desc}</div>
+                  <div className="text-sm text-gray-700 font-medium">{option.desc}</div>
                 </button>
               ))}
             </div>
@@ -419,7 +419,7 @@ const VideoCreation = () => {
 
           {/* Visual Style Selection */}
           <div className="mt-6">
-            <label className="block text-sm font-medium mb-3">Visual Style</label>
+            <label className="block text-base font-semibold mb-3 text-gray-900">Visual Style</label>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {visualStyles.map(style => (
                 <button
@@ -433,7 +433,7 @@ const VideoCreation = () => {
                   }`}
                 >
                   <div className="font-medium">{style.name}</div>
-                  <div className="text-sm text-gray-500">{style.description}</div>
+                  <div className="text-sm text-gray-700 font-medium">{style.description}</div>
                 </button>
               ))}
             </div>
@@ -442,11 +442,11 @@ const VideoCreation = () => {
           {/* AI Provider Selection */}
           {providers && (
             <div className="mt-6">
-              <label className="block text-sm font-medium mb-3">AI Provider Settings</label>
+              <label className="block text-base font-semibold mb-3 text-gray-900">AI Provider Settings</label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Script Provider */}
                 <div>
-                  <label className="block text-xs font-medium mb-2 text-gray-600">Script Generation</label>
+                  <label className="block text-sm font-semibold mb-2 text-gray-800">Script Generation</label>
                   <select
                     value={formData.scriptProvider || ''}
                     onChange={(e) => {
@@ -480,7 +480,7 @@ const VideoCreation = () => {
 
                 {/* Image Provider */}
                 <div>
-                  <label className="block text-xs font-medium mb-2 text-gray-600">Image Generation</label>
+                  <label className="block text-sm font-semibold mb-2 text-gray-800">Image Generation</label>
                   <select
                     value={formData.imageProvider || ''}
                     onChange={(e) => {
@@ -503,7 +503,7 @@ const VideoCreation = () => {
                   {/* Model Selection */}
                   {formData.imageProvider && providers.image?.find((p: any) => p.id === formData.imageProvider)?.models && (
                     <div className="mt-3">
-                      <label className="block text-xs font-medium mb-2 text-gray-500">Select Model</label>
+                      <label className="block text-sm font-semibold mb-2 text-gray-700">Select Model</label>
                       <select
                         value={formData.imageModel || ''}
                         onChange={(e) => setFormData({ ...formData, imageModel: e.target.value })}
@@ -516,7 +516,7 @@ const VideoCreation = () => {
                       
                       {/* Model Description */}
                       {formData.imageModel && (
-                        <p className="mt-2 text-xs text-gray-500 bg-gray-50 p-2 rounded">
+                        <p className="mt-2 text-sm text-gray-700 bg-gray-100 p-2 rounded font-medium">
                           💡 {providers.image?.find((p: any) => p.id === formData.imageProvider)?.models.find((m: any) => m.id === formData.imageModel)?.description}
                         </p>
                       )}
@@ -524,7 +524,7 @@ const VideoCreation = () => {
                   )}
                   
                   {/* Provider Info */}
-                  <div className="mt-3 text-xs text-gray-500 flex items-center gap-2">
+                  <div className="mt-3 text-sm text-gray-700 flex items-center gap-2 font-medium">
                     {formData.imageProvider === 'craiyon' && (
                       <span className="flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 rounded">
                         ✓ 100% Free - No API key
@@ -560,7 +560,7 @@ const VideoCreation = () => {
 
                 {/* TTS Provider */}
                 <div>
-                  <label className="block text-xs font-medium mb-2 text-gray-600">Voice/TTS</label>
+                  <label className="block text-sm font-semibold mb-2 text-gray-800">Voice/TTS</label>
                   <select
                     value={formData.ttsProvider || ''}
                     onChange={(e) => {
@@ -584,7 +584,7 @@ const VideoCreation = () => {
                   {/* TTS Model Selection */}
                   {formData.ttsProvider && providers.tts?.find((p: any) => p.id === formData.ttsProvider)?.models && (
                     <div className="mt-3">
-                      <label className="block text-xs font-medium mb-2 text-gray-500">Select Voice</label>
+                      <label className="block text-sm font-semibold mb-2 text-gray-700">Select Voice</label>
                       <select
                         value={formData.ttsModel || ''}
                         onChange={(e) => setFormData({ ...formData, ttsModel: e.target.value, voiceName: e.target.value })}
@@ -597,7 +597,7 @@ const VideoCreation = () => {
                       
                       {/* Model Description */}
                       {formData.ttsModel && (
-                        <p className="mt-2 text-xs text-gray-500 bg-gray-50 p-2 rounded">
+                        <p className="mt-2 text-sm text-gray-700 bg-gray-100 p-2 rounded font-medium">
                           💡 {providers.tts?.find((p: any) => p.id === formData.ttsProvider)?.models.find((m: any) => m.id === formData.ttsModel)?.description}
                         </p>
                       )}
@@ -605,7 +605,7 @@ const VideoCreation = () => {
                   )}
                   
                   {/* Provider Info */}
-                  <div className="mt-3 text-xs text-gray-500 flex items-center gap-2">
+                  <div className="mt-3 text-sm text-gray-700 flex items-center gap-2 font-medium">
                     {formData.ttsProvider === 'edge-tts' && (
                       <span className="flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 rounded">
                         ✓ 100% Free - Microsoft Edge TTS
@@ -624,8 +624,8 @@ const VideoCreation = () => {
 
           {/* Speaking Rate Slider */}
           <div className="mt-6">
-            <label className="block text-sm font-medium mb-3">
-              Speaking Rate: {formData.speakingRate}x
+            <label className="block text-base font-semibold mb-3 text-gray-900">
+              Speaking Rate: <span className="text-primary-blue">{formData.speakingRate}x</span>
             </label>
             <input
               type="range"
@@ -636,7 +636,7 @@ const VideoCreation = () => {
               onChange={(e) => setFormData({ ...formData, speakingRate: parseFloat(e.target.value) })}
               className="w-full"
             />
-            <div className="flex justify-between text-xs text-gray-500 mt-2">
+            <div className="flex justify-between text-sm text-gray-700 mt-2 font-semibold">
               <span>Slow</span>
               <span>Normal</span>
               <span>Fast</span>
@@ -647,7 +647,7 @@ const VideoCreation = () => {
         {/* Media Options (only for standard mode) */}
         {!formData.isTextToVideo && (
           <motion.div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-            <h2 className="text-h2 font-heading mb-6">Media Options</h2>
+            <h2 className="text-xl font-bold mb-6 text-gray-900">Media Options</h2>
             <div className="mb-6">
               <label className="flex items-center cursor-pointer">
                 <input
@@ -657,8 +657,8 @@ const VideoCreation = () => {
                   className="w-5 h-5 rounded border-gray-300 text-primary-blue focus:ring-2 focus:ring-primary-blue"
                 />
                 <span className="ml-3 flex flex-col">
-                  <span className="font-medium">Generate AI Background Images</span>
-                  <span className="text-sm text-gray-500">
+                  <span className="font-semibold text-gray-900">Generate AI Background Images</span>
+                  <span className="text-sm text-gray-700 font-medium">
                     {formData.generateImages 
                       ? '✨ AI will generate unique background images for each scene'
                       : '📷 Use default background (faster generation)'}
