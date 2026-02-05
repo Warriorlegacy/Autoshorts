@@ -1,0 +1,531 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, master]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.github/*.md'
+  pull_request:
+    branches: [main, master]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+env:
+  NODE_VERSION: '20'
+  REGISTRY: ghcr.io
+  IMAGE_NAME_BACKEND: ${{ github.repository }}/backend
+  IMAGE_NAME_FRONTEND: ${{ github.repository }}/frontend
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================
+  # JOB 1: Test Frontend
+  # ============================================================
+  test-frontend:
+    name: Test Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: ./frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linting
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Run type check
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        run: npm run test -- --run --reporter=verbose
+        env:
+          CI: true
+
+      - name: Build frontend
+        run: npm run build
+        env:
+          CI: true
+          NODE_ENV: production
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: ./frontend/dist
+          retention-days: 7
+
+  # ============================================================
+  # JOB 2: Test Backend
+  # ============================================================
+  test-backend:
+    name: Test Backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: ./backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run type check
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        run: npm run test -- --coverage
+        env:
+          CI: true
+          NODE_ENV: test
+          REDIS_URL: redis://localhost:6379
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: ./backend/coverage
+          retention-days: 7
+
+  # ============================================================
+  # JOB 3: Build and Push Docker Images
+  # ============================================================
+  build-and-push:
+    name: Build and Push Docker Images
+    needs: [test-frontend, test-backend]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to Docker Hub (optional fallback)
+        if: secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata for backend
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Extract metadata for frontend
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+          platforms: linux/amd64,linux/arm64
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+          platforms: linux/amd64,linux/arm64
+
+      - name: Export image tags
+        id: export-tags
+        run: |
+          echo "backend_tag=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:latest" >> $GITHUB_OUTPUT
+          echo "frontend_tag=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:latest" >> $GITHUB_OUTPUT
+
+  # ============================================================
+  # JOB 4: Deploy to Production
+  # ============================================================
+  deploy:
+    name: Deploy to Production
+    needs: build-and-push
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://autoshorts.example.com
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+          log-public-key: false
+
+      - name: Add VPS to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to production server
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          BACKEND_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:latest
+          FRONTEND_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:latest
+        run: |
+          # Create deployment script
+          cat > deploy.sh << 'DEPLOY_SCRIPT'
+          #!/bin/bash
+          set -e
+          
+          DEPLOY_DIR="/opt/autoshorts"
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          
+          echo "=== Starting deployment at $TIMESTAMP ==="
+          
+          # Create backup of current deployment
+          if [ -d "$DEPLOY_DIR" ]; then
+            echo "Creating backup..."
+            sudo cp -r "$DEPLOY_DIR" "${DEPLOY_DIR}_backup_${TIMESTAMP}"
+          fi
+          
+          # Ensure deployment directory exists
+          sudo mkdir -p "$DEPLOY_DIR"
+          cd "$DEPLOY_DIR"
+          
+          # Login to GitHub Container Registry
+          echo "Logging into container registry..."
+          echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+          
+          # Create .env file from secret
+          echo "Creating environment file..."
+          echo "$ENV_FILE_CONTENT" | sudo tee .env > /dev/null
+          sudo chmod 600 .env
+          
+          # Pull latest images
+          echo "Pulling latest Docker images..."
+          sudo docker pull "$BACKEND_IMAGE"
+          sudo docker pull "$FRONTEND_IMAGE"
+          
+          # Update docker-compose to use GHCR images
+          echo "Updating docker-compose configuration..."
+          sudo sed -i "s|build:.*|image: $BACKEND_IMAGE|" docker-compose.yml
+          sudo sed -i "s|context: ./backend|# Using pre-built image|" docker-compose.yml
+          sudo sed -i "s|dockerfile: Dockerfile|# |" docker-compose.yml
+          
+          # Stop existing containers gracefully
+          echo "Stopping existing containers..."
+          sudo docker-compose down --timeout 30 || true
+          
+          # Start new containers
+          echo "Starting new containers..."
+          sudo docker-compose up -d --remove-orphans
+          
+          # Wait for health checks
+          echo "Waiting for services to be healthy..."
+          sleep 10
+          
+          # Check backend health
+          for i in {1..12}; do
+            if curl -sf http://localhost:3001/api/health > /dev/null 2>&1; then
+              echo "Backend is healthy!"
+              break
+            fi
+            echo "Waiting for backend... attempt $i/12"
+            sleep 5
+          done
+          
+          # Check frontend
+          if curl -sf http://localhost:80 > /dev/null 2>&1 || curl -sf http://localhost > /dev/null 2>&1; then
+            echo "Frontend is responding!"
+          else
+            echo "Warning: Frontend health check failed"
+          fi
+          
+          # Cleanup old images
+          echo "Cleaning up old Docker images..."
+          sudo docker image prune -af --filter "until=168h" || true
+          
+          # Cleanup old backups (keep last 5)
+          echo "Cleaning up old backups..."
+          ls -t ${DEPLOY_DIR}_backup_* 2>/dev/null | tail -n +6 | xargs -r sudo rm -rf
+          
+          echo "=== Deployment completed successfully at $(date) ==="
+          DEPLOY_SCRIPT
+          
+          # Copy necessary files to server
+          echo "Copying deployment files..."
+          scp docker-compose.yml "${VPS_USER}@${VPS_HOST}:/tmp/docker-compose.yml"
+          
+          # Execute deployment script on server
+          echo "Executing deployment..."
+          ssh "${VPS_USER}@${VPS_HOST}" "
+            export GHCR_TOKEN='${{ secrets.GITHUB_TOKEN }}'
+            export GHCR_USERNAME='${{ github.actor }}'
+            export BACKEND_IMAGE='${BACKEND_IMAGE}'
+            export FRONTEND_IMAGE='${FRONTEND_IMAGE}'
+            export ENV_FILE_CONTENT='${{ secrets.ENV_FILE_CONTENT }}'
+            
+            # Copy compose file to deploy directory
+            sudo mkdir -p /opt/autoshorts
+            sudo cp /tmp/docker-compose.yml /opt/autoshorts/docker-compose.yml
+            
+            $(cat deploy.sh)
+          "
+
+      - name: Deployment verification
+        if: success()
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          echo "Verifying deployment..."
+          sleep 5
+          
+          # Check if backend is healthy
+          if ssh "${VPS_USER}@${VPS_HOST}" 'curl -sf http://localhost:3001/api/health'; then
+            echo "✅ Backend health check passed"
+          else
+            echo "❌ Backend health check failed"
+            exit 1
+          fi
+          
+          # Check if frontend is responding
+          if ssh "${VPS_USER}@${VPS_HOST}" 'curl -sf -o /dev/null http://localhost'; then
+            echo "✅ Frontend check passed"
+          else
+            echo "❌ Frontend check failed"
+            exit 1
+          fi
+          
+          echo "✅ Deployment verified successfully!"
+
+      - name: Rollback on failure
+        if: failure()
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          echo "⚠️ Deployment failed! Initiating rollback..."
+          
+          ssh "${VPS_USER}@${VPS_HOST}" "
+            cd /opt
+            
+            # Find the most recent backup
+            LATEST_BACKUP=\$(ls -td autoshorts_backup_* 2>/dev/null | head -1)
+            
+            if [ -n \"\$LATEST_BACKUP\" ]; then
+              echo \"Restoring from backup: \$LATEST_BACKUP\"
+              
+              # Stop current failed deployment
+              cd autoshorts && sudo docker-compose down || true
+              
+              # Restore backup
+              sudo rm -rf autoshorts
+              sudo cp -r \$LATEST_BACKUP autoshorts
+              
+              # Start from backup
+              cd autoshorts && sudo docker-compose up -d
+              
+              echo \"Rollback completed\"
+            else
+              echo \"No backup found to rollback to\"
+            fi
+          " || echo "Rollback failed or not needed"
+
+  # ============================================================
+  # NOTIFICATION JOB
+  # ============================================================
+  notify:
+    name: Send Notifications
+    needs: [test-frontend, test-backend, build-and-push, deploy]
+    if: always() && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Notify Slack on success
+        if: needs.deploy.result == 'success'
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "✅ AutoShorts deployment successful!",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "🚀 AutoShorts Deployed Successfully"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Repository:*\n${{ github.repository }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Branch:*\n${{ github.ref_name }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Commit:*\n<${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Author:*\n${{ github.actor }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "All tests passed and deployment completed successfully."
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
+
+      - name: Notify Slack on failure
+        if: needs.deploy.result == 'failure'
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "❌ AutoShorts deployment failed!",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "⚠️ AutoShorts Deployment Failed"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Repository:*\n${{ github.repository }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Branch:*\n${{ github.ref_name }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Commit:*\n<${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Author:*\n${{ github.actor }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "Check the <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|workflow logs> for details."
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
+
+      - name: Create GitHub deployment
+        if: needs.deploy.result == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: 'production',
+              auto_merge: false,
+              required_contexts: [],
+              description: 'Production deployment via GitHub Actions'
+            })
+        continue-on-error: true

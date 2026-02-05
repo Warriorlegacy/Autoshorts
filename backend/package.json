@@ -1,0 +1,55 @@
+{
+  "name": "autoshorts-backend",
+  "version": "1.0.0",
+  "description": "Backend API for AutoShorts.",
+  "main": "dist/server.js",
+  "scripts": {
+    "start": "ts-node src/server.ts",
+    "dev": "ts-node src/server.ts",
+    "build": "tsc",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:render": "ts-node src/test-video-rendering.ts",
+    "test:free": "ts-node src/test-free-services.ts"
+  },
+  "keywords": [
+    "express",
+    "typescript"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google-cloud/text-to-speech": "^6.4.0",
+    "@remotion/animation-utils": "^4.0.411",
+    "@remotion/cli": "^4.0.411",
+    "@remotion/lambda": "^4.0.411",
+    "@remotion/renderer": "^4.0.411",
+    "@remotion/transitions": "^4.0.411",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.19",
+    "@types/jsonwebtoken": "^9.0.10",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.6.2",
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.3",
+    "express": "^4.19.2",
+    "googleapis": "^171.0.0",
+    "groq-sdk": "^0.9.1",
+    "jsonwebtoken": "^9.0.3",
+    "node-pg-migrate": "^8.0.4",
+    "pg": "^8.17.2",
+    "remotion": "^4.0.411"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20.14.9",
+    "@types/pg": "^8.16.0",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.3"
+  }
+}

@@ -1,0 +1,118 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: autoshorts-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - JWT_SECRET=${JWT_SECRET}
+      - BACKEND_URL=${BACKEND_URL:-http://localhost:3001}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost}
+      
+      # Free AI Services
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY}
+      - MURF_API_KEY=${MURF_API_KEY}
+      - PEXELS_API_KEY=${PEXELS_API_KEY}
+      - POLLINATION_API_KEY=${POLLINATION_API_KEY}
+      - BYTEZ_API_KEY=${BYTEZ_API_KEY}
+      
+      # Paid AI Services
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - HEYGEN_API_KEY=${HEYGEN_API_KEY}
+      - FAL_API_KEY=${FAL_API_KEY}
+      - REPLICATE_API_KEY=${REPLICATE_API_KEY}
+      - SKYREELS_API_KEY=${SKYREELS_API_KEY}
+      
+      # Social Media OAuth
+      - YOUTUBE_CLIENT_ID=${YOUTUBE_CLIENT_ID}
+      - YOUTUBE_CLIENT_SECRET=${YOUTUBE_CLIENT_SECRET}
+      - YOUTUBE_REDIRECT_URI=${YOUTUBE_REDIRECT_URI}
+      - FACEBOOK_APP_ID=${FACEBOOK_APP_ID}
+      - FACEBOOK_APP_SECRET=${FACEBOOK_APP_SECRET}
+      - FACEBOOK_REDIRECT_URI=${FACEBOOK_REDIRECT_URI}
+      - INSTAGRAM_APP_ID=${INSTAGRAM_APP_ID}
+      - INSTAGRAM_APP_SECRET=${INSTAGRAM_APP_SECRET}
+      - INSTAGRAM_REDIRECT_URI=${INSTAGRAM_REDIRECT_URI}
+      
+      # Storage
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_BUCKET_NAME=${AWS_BUCKET_NAME}
+      - AWS_REGION=${AWS_REGION}
+      
+      # Database & Cache
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./backend/autoshorts.db:/app/autoshorts.db
+      - ./backend/public/renders:/app/public/renders
+      - ./backend/public/images:/app/public/images
+      - ./backend/logs:/app/logs
+    depends_on:
+      - redis
+    networks:
+      - autoshorts-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: autoshorts-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - autoshorts-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: autoshorts-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - autoshorts-network
+    command: redis-server --appendonly yes
+
+  # Optional: PostgreSQL for production database
+  # Uncomment if migrating from SQLite to PostgreSQL
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: autoshorts-postgres
+  #   restart: unless-stopped
+  #   environment:
+  #     - POSTGRES_DB=autoshorts
+  #     - POSTGRES_USER=autoshorts
+  #     - POSTGRES_PASSWORD=${DB_PASSWORD}
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   networks:
+  #     - autoshorts-network
+  #   ports:
+  #     - "5432:5432"
+
+volumes:
+  redis-data:
+  # postgres-data:
+
+networks:
+  autoshorts-network:
+    driver: bridge

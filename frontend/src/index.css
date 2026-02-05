@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900 font-sans;
+  }
+}
+
+@layer utilities {
+  .text-h1 { @apply text-3xl font-bold leading-tight; }
+  .text-h2 { @apply text-2xl font-semibold leading-snug; }
+  .text-h3 { @apply text-xl font-semibold leading-normal; }
+  .text-button { @apply text-base font-semibold tracking-wider; }
+}

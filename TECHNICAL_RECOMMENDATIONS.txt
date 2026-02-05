@@ -1,0 +1,278 @@
+================================================================================
+AUTOSHORTS - DETAILED TECHNICAL RECOMMENDATIONS & CODE FIXES
+================================================================================
+
+================================================================================
+CRITICAL FIXES - IMPLEMENT IMMEDIATELY
+================================================================================
+
+1. ROTATE EXPOSED API KEY
+   Current: GEMINI_API_KEY=AIzaSyCFMqlGPKBxlocvm36nlhRgGNsJ3IbeK8A
+   
+   Steps:
+   a) Go to Google Cloud Console
+   b) Disable current API key
+   c) Generate new API key
+   d) Update in secure environment variable system
+   e) Add .env to .gitignore: echo ".env" >> .gitignore
+   f) Create .env.example for documentation
+
+2. IMPLEMENT RATE LIMITING
+   File: backend/src/server.ts
+   
+   Install: npm install express-rate-limit
+   
+   Add after line 16:
+   
+   import rateLimit from 'express-rate-limit';
+   
+   const apiLimiter = rateLimit({
+     windowMs: 15 * 60 * 1000,
+     max: 100,
+   });
+   
+   const authLimiter = rateLimit({
+     windowMs: 15 * 60 * 1000,
+     max: 5,
+     skipSuccessfulRequests: true,
+   });
+   
+   app.use('/api/', apiLimiter);
+   app.use('/api/auth/login', authLimiter);
+   app.use('/api/auth/register', authLimiter);
+
+3. ADD PASSWORD STRENGTH VALIDATION
+   File: backend/src/routes/auth.ts (add before line 26)
+   
+   function validatePassword(password: string) {
+     const errors = [];
+     if (password.length < 8) errors.push('Min 8 characters');
+     if (!/[A-Z]/.test(password)) errors.push('Need uppercase');
+     if (!/[a-z]/.test(password)) errors.push('Need lowercase');
+     if (!/[0-9]/.test(password)) errors.push('Need number');
+     if (!/[!@#$%^&*]/.test(password)) errors.push('Need special char');
+     return errors;
+   }
+   
+   In register route (line 26):
+   const errors = validatePassword(password);
+   if (errors.length > 0) {
+     return res.status(400).json({ errors });
+   }
+
+================================================================================
+HIGH PRIORITY - DATABASE & PERFORMANCE
+================================================================================
+
+4. CREATE DATABASE INDEXES
+   File: backend/migrations/001_initial_schema.sql
+   
+   Add at end of file:
+   
+   CREATE INDEX IF NOT EXISTS idx_videos_user_id ON videos(user_id);
+   CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
+   CREATE INDEX IF NOT EXISTS idx_videos_created_at ON videos(created_at DESC);
+   CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
+   CREATE INDEX IF NOT EXISTS idx_videos_user_id_status 
+     ON videos(user_id, status);
+   CREATE INDEX IF NOT EXISTS idx_videos_user_id_created_at 
+     ON videos(user_id, created_at DESC);
+
+5. FIX N+1 QUERY IN getUserVideos
+   File: backend/src/controllers/videoController.ts
+   
+   Replace lines 209-224 with:
+   
+   const result = await query(
+     `SELECT 
+        id, title, caption, niche, duration, visual_style, status,
+        metadata, created_at, updated_at,
+        COUNT(*) OVER() as total_count
+      FROM videos
+      WHERE user_id = ?
+      ORDER BY created_at DESC
+      LIMIT ? OFFSET ?`,
+     [userId, limit, offset]
+   );
+   
+   const total = result.rows.length > 0 ? 
+     parseInt(result.rows[0].total_count) : 0;
+
+6. IMPLEMENT JOB QUEUE FOR RENDERING
+   File: backend/src/controllers/videoController.ts
+   
+   Install: npm install bull redis
+   
+   Create backend/src/services/jobQueue.ts:
+   
+   import Queue from 'bull';
+   
+   export const renderQueue = new Queue('video-renders', {
+     redis: {
+       host: process.env.REDIS_HOST || 'localhost',
+       port: parseInt(process.env.REDIS_PORT || '6379')
+     }
+   });
+   
+   renderQueue.process(async (job) => {
+     try {
+       await renderingService.renderVideo(job.data.videoId);
+     } catch (error) {
+       console.error(`Render failed for ${job.data.videoId}`, error);
+       throw error; // Triggers retry
+     }
+   });
+   
+   Replace lines 125-128 in videoController.ts:
+   
+   await renderQueue.add(
+     { videoId },
+     {
+       attempts: 3,
+       backoff: { type: 'exponential', delay: 2000 },
+       removeOnComplete: true,
+     }
+   );
+
+================================================================================
+HIGH PRIORITY - ERROR HANDLING
+================================================================================
+
+7. FIX FIRE-AND-FORGET PROMISES
+   Current issue: Unhandled rejections can crash server
+   
+   File: backend/src/server.ts (add before listen):
+   
+   process.on('unhandledRejection', (reason, promise) => {
+     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+     // Send to error tracking service (Sentry, etc)
+   });
+   
+   process.on('uncaughtException', (error) => {
+     console.error('Uncaught Exception:', error);
+     process.exit(1); // Force restart
+   });
+
+8. ADD DATABASE CLEANUP ON EXIT
+   File: backend/src/config/db.ts
+   
+   Replace initializeDatabase function:
+   
+   export const initializeDatabase = (): Database.Database => {
+     if (db) return db;
+     
+     db = new Database(DB_PATH);
+     db.pragma('journal_mode = WAL');
+     
+     const closeDb = () => {
+       if (db) {
+         db.close();
+         console.log('Database closed');
+       }
+     };
+     
+     process.on('exit', closeDb);
+     process.on('SIGTERM', closeDb);
+     process.on('SIGINT', closeDb);
+     
+     return db;
+   };
+
+9. ADD STRUCTURED LOGGING
+   Install: npm install pino
+   
+   Create backend/src/utils/logger.ts:
+   
+   import pino from 'pino';
+   
+   export const logger = pino({
+     level: process.env.LOG_LEVEL || 'info',
+     transport: {
+       target: 'pino-pretty',
+       options: {
+         colorize: true,
+         levelFirst: true,
+         singleLine: false,
+       }
+     }
+   });
+
+================================================================================
+MEDIUM PRIORITY - CODE QUALITY
+================================================================================
+
+10. CENTRALIZE JWT CONFIGURATION
+    Create backend/src/config/jwt.ts:
+    
+    export const JWT_CONFIG = {
+      SECRET: process.env.JWT_SECRET || (() => {
+        if (process.env.NODE_ENV === 'production') {
+          throw new Error('JWT_SECRET required in production');
+        }
+        return 'dev-only-secret-key';
+      })(),
+      EXPIRES_IN: '24h',
+      ALGORITHM: 'HS256',
+    };
+    
+    Replace all imports in:
+    - backend/src/middleware/auth.ts
+    - backend/src/middleware/authMiddleware.ts
+    - backend/src/routes/auth.ts
+
+11. CREATE ERROR RESPONSE UTILITY
+    Create backend/src/utils/errorResponse.ts:
+    
+    export const errorResponse = (
+      code: string,
+      message: string,
+      details?: any
+    ) => ({
+      success: false,
+      error: {
+        code,
+        message,
+        ...(details && { details }),
+        timestamp: new Date().toISOString(),
+      }
+    });
+    
+    export const successResponse = (data: any, message?: string) => ({
+      success: true,
+      ...(message && { message }),
+      data,
+      timestamp: new Date().toISOString(),
+    });
+
+12. ADD INPUT VALIDATION MIDDLEWARE
+    Create backend/src/middleware/validation.ts:
+    
+    import { body, validationResult } from 'express-validator';
+    
+    export const validateAuth = [
+      body('email').isEmail().normalizeEmail(),
+      body('password').isLength({ min: 8 }),
+      body('name').optional().trim().escape(),
+    ];
+    
+    export const handleValidationErrors = (req, res, next) => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+      next();
+    };
+
+================================================================================
+FRONTEND OPTIMIZATION
+================================================================================
+
+13. IMPLEMENT CODE SPLITTING
+    File: frontend/src/App.tsx
+    
+    Replace static imports with:
+    
+    import { lazy, Suspense } from 'react';
+    
+    const Landing = lazy(() => import('./screens/Landing'));
+    const Dashbo
