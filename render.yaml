@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: autoshorts
+    runtime: node
+    buildCommand: npm install && cd backend && npm install && cd ../frontend && npm install && npm run build
+    startCommand: cd backend && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: BACKEND_URL
+        value: https://autoshorts.onrender.com
+      - key: FRONTEND_URL
+        value: https://autoshorts.onrender.com
+    disk:
+      name: data
+      mountPath: /opt/render/project/src/backend/data
+      sizeGB: 1
+    healthCheckPath: /api/health
+    autoDeploy: true

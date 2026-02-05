@@ -7,6 +7,7 @@
     "start": "ts-node src/server.ts",
     "dev": "ts-node src/server.ts",
     "build": "tsc",
+    "render-build": "npm run build",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
