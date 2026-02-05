@@ -1,6 +1,7 @@
 import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Home, LayoutGrid, Calendar, Settings, Bell, PlusSquare } from 'lucide-react';
+import { Home, LayoutGrid, Calendar, Settings, Bell, Plus, Sparkles } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 const Layout: React.FC = () => {
   const location = useLocation();
@@ -15,42 +16,58 @@ const Layout: React.FC = () => {
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-[#0A0A0A] text-white flex flex-col relative overflow-hidden">
+      {/* Background Effects */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-purple-600/20 rounded-full blur-[120px]" />
+        <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-blue-600/20 rounded-full blur-[120px]" />
+      </div>
+
       {/* Top Header */}
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-30">
+      <header className="fixed top-0 left-0 right-0 bg-[#0A0A0A]/80 backdrop-blur-xl border-b border-white/5 z-30">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center">
-            <img src="/logo.png" alt="AutoShorts" className="h-8 w-auto" />
-          </div>
+          <Link to="/dashboard" className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg">
+              <Sparkles className="w-4 h-4 text-white" />
+            </div>
+            <span className="font-bold text-lg text-white">AutoShorts</span>
+          </Link>
           
           <div className="flex items-center gap-4">
-            <button className="p-2 text-gray-500 hover:bg-gray-100 rounded-full relative">
+            <button className="p-2 text-white/60 hover:text-white hover:bg-white/10 rounded-full transition-all relative">
               <Bell size={20} />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
             </button>
-            <div className="w-8 h-8 bg-gray-200 rounded-full overflow-hidden border border-gray-100">
-              <img src="https://ui-avatars.com/api/?name=User&background=random" alt="User" />
+            <div className="w-9 h-9 rounded-full overflow-hidden border border-white/20 bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-sm font-bold">
+              US
             </div>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8 pb-24">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 pt-24 pb-24 relative z-10">
         <Outlet />
       </main>
 
-      {/* Bottom Navigation (Mobile Friendly) */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 h-16 flex items-center justify-around z-30">
+      {/* Bottom Navigation */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-[#0A0A0A]/90 backdrop-blur-xl border-t border-white/5 px-4 h-16 flex items-center justify-around z-30">
         {navItems.map((item) => (
           <Link
             key={item.path}
             to={item.path}
-            className={`flex flex-col items-center gap-1 transition-colors ${
-              isActive(item.path) ? 'text-primary-blue' : 'text-gray-400 hover:text-gray-600'
+            className={`flex flex-col items-center gap-1 transition-all duration-300 ${
+              isActive(item.path) 
+                ? 'text-indigo-400' 
+                : 'text-white/40 hover:text-white/70'
             }`}
           >
-            <item.icon size={24} />
+            <motion.div
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <item.icon size={22} />
+            </motion.div>
             <span className="text-[10px] font-medium">{item.label}</span>
           </Link>
         ))}
@@ -58,13 +75,19 @@ const Layout: React.FC = () => {
 
       {/* Floating Action Button */}
       {!isActive('/create') && (
-        <Link
-          to="/create"
-          className="fixed bottom-20 right-6 w-14 h-14 bg-primary-blue text-white rounded-full shadow-lg flex items-center justify-center hover:scale-105 transition-transform z-40"
-          title="Create new video"
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          className="fixed bottom-20 right-6 z-40"
         >
-          <PlusSquare size={28} />
-        </Link>
+          <Link
+            to="/create"
+            className="w-14 h-14 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-full shadow-lg shadow-indigo-500/30 flex items-center justify-center hover:scale-105 transition-all"
+            title="Create new video"
+          >
+            <Plus size={28} />
+          </Link>
+        </motion.div>
       )}
     </div>
   );
