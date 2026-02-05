@@ -3,6 +3,9 @@
 FROM node:20-alpine AS frontend-builder
 WORKDIR /app/frontend
 
+# Invalidate cache
+RUN echo "cache-bust-1"
+
 # Copy frontend package files
 COPY frontend/package*.json ./
 RUN npm ci
@@ -14,6 +17,9 @@ RUN npm run build
 # Stage 2: Build Backend
 FROM node:20-alpine AS backend-builder
 WORKDIR /app/backend
+
+# Invalidate cache
+RUN echo "cache-bust-1"
 
 # Copy backend package files
 COPY backend/package*.json ./
