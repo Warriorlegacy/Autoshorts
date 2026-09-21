@@ -11,3 +11,7 @@ npm-debug.log*
 *.swp
 *.swo
 *~
+dist/
+.next/
+node_modules/
+.env*
