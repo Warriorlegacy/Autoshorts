@@ -1,0 +1,194 @@
+name: Signhify Studio - 3x Daily AI Reels
+
+on:
+  schedule:
+    # 3 runs/day, Asia/Kolkata equivalent UTC times.
+    # 09:00 IST = 03:30 UTC, 15:00 IST = 09:30 UTC, 21:00 IST = 15:30 UTC.
+    - cron: "30 3 * * *"
+    - cron: "30 9 * * *"
+    - cron: "30 15 * * *"
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: "Content slot"
+        required: false
+        default: "manual"
+      publish:
+        description: "Publish to Instagram"
+        required: false
+        default: "true"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: signhify-studio-video
+  cancel-in-progress: false
+
+jobs:
+  generate-render-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
+      FFMPEG_THREADS: 2
+      VIDEO_WIDTH: 1080
+      VIDEO_HEIGHT: 1920
+      VIDEO_FPS: 30
+      VIDEO_DURATION_SECONDS: 60
+
+      # AI providers
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+
+      # Instagram Graph API
+      META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+      INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
+      META_GRAPH_VERSION: v24.0
+
+      # Brand
+      BRAND_HANDLE: "@signhify.studio"
+      BRAND_CTA: "Follow Signhify.studio for more"
+      NICHE: "Tech and AI"
+
+      # HyperFrames is mandatory for the visual layer.
+      HYPERFRAMES_REF: "heygen-com/hyperframes"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg chromium fonts-dejavu fonts-liberation libasound2t64 libnss3 libgbm1
+          ffmpeg -version | head -n 1
+          chromium --version
+
+      - name: Install project dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          python -m pip install --upgrade pip
+          python -m pip install edge-tts
+          # Pipecat is used as the voice pipeline/orchestration layer.
+          python -m pip install "pipecat-ai"
+          # HyperFrames is mandatory.
+          npx hyperframes@latest --version
+
+      - name: Install HyperFrames skills/runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx hyperframes@latest skills update || true
+
+      - name: Create output directories
+        shell: bash
+        run: |
+          rm -rf .automation/video-run
+          mkdir -p .automation/video-run/{audio,frames,hyperframes,render,out}
+
+      - name: Generate topic + 60s viral script
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/signhify_generate_script.py \
+            --niche "$NICHE" \
+            --duration "$VIDEO_DURATION_SECONDS" \
+            --cta "$BRAND_CTA" \
+            --out ".automation/video-run/script.json"
+
+      - name: Generate voiceover with free neural TTS
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/signhify_tts.py \
+            --script ".automation/video-run/script.json" \
+            --out ".automation/video-run/audio/voice.mp3"
+
+      - name: Build HyperFrames composition
+        shell: bash
+        run: |
+          set -euo pipefail
+          # IMPORTANT: HyperFrames is the required primary visual renderer.
+          python scripts/signhify_build_hyperframes.py \
+            --script ".automation/video-run/script.json" \
+            --audio ".automation/video-run/audio/voice.mp3" \
+            --out ".automation/video-run/hyperframes"
+
+      - name: Render HyperFrames video
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd ".automation/video-run/hyperframes"
+          npx hyperframes@latest lint
+          npx hyperframes@latest render --output ../render/hyperframes.mp4
+
+      - name: Remotion finishing pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Remotion is used only as the deterministic compositing/finishing layer.
+          # HyperFrames remains mandatory and supplies the primary animation/render.
+          npx remotion render src/index.ts SignhifyReel ../render/final-reel.mp4 \
+            --codec=h264 \
+            --pixel-format=yuv420p \
+            --fps "$VIDEO_FPS" \
+            --width "$VIDEO_WIDTH" \
+            --height "$VIDEO_HEIGHT" \
+            --props='{"source":"../render/hyperframes.mp4","durationSeconds":60}'
+
+      - name: Normalize loudness + validate Instagram format
+        shell: bash
+        run: |
+          set -euo pipefail
+          ffmpeg -y -i ".automation/video-run/render/final-reel.mp4" \
+            -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2" \
+            -r 30 -c:v libx264 -profile:v high -pix_fmt yuv420p -movflags +faststart \
+            -af "loudnorm=I=-14:TP=-1.5:LRA=11" -c:a aac -b:a 192k \
+            ".automation/video-run/out/signhify-reel.mp4"
+          ffprobe -v error -show_entries format=duration -show_entries stream=width,height,r_frame_rate \
+            -of default=noprint_wrappers=1 ".automation/video-run/out/signhify-reel.mp4"
+
+      - name: Publish Reel + Story
+        if: ${{ github.event_name == 'schedule' || inputs.publish == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/signhify_instagram_publish.py \
+            --video ".automation/video-run/out/signhify-reel.mp4" \
+            --script ".automation/video-run/script.json" \
+            --access-token "$META_ACCESS_TOKEN" \
+            --ig-user-id "$INSTAGRAM_BUSINESS_ACCOUNT_ID" \
+            --graph-version "$META_GRAPH_VERSION" \
+            --publish-story true
+
+      - name: Upload debug artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: signhify-video-${{ github.run_id }}
+          path: |
+            .automation/video-run/script.json
+            .automation/video-run/render/*.mp4
+            .automation/video-run/out/*.mp4
+          retention-days: 1
